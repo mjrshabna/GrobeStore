@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: products
+    // Fields: name, description, price, category, imageUrl, images, specs, stock, isFlashDeal, createdAt
+    //
+    // Collection: orders
+    // Fields: userId, items, total, status, paymentStatus, transactionId, shippingAddress, createdAt
+    //
+    // Collection: blogs
+    // Fields: title, content, imageUrl, author, createdAt
+    //
+    // Collection: users
+    // Fields: email, role, createdAt
+    //
+    // Collection: coupons
+    // Fields: code, discountType, discountValue, minPurchase, isActive, expiryDate
+    //
+    // Collection: policies
+    // Fields: title, content, updatedAt
+    //
+    // Collection: settings
+    // Fields: shopName, contactEmail, maintenanceMode, profitMargin, upiId, shiprocketEmail, shiprocketPassword, zohoEmail, zohoPassword, ui
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          request.auth.token.email == "shabnavpm@gmail.com"
+        );
+    }
+
+    function isValidString(val, min, max) {
+      return val is string && val.size() >= min && val.size() <= max;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) &&
+        request.resource.data.stock >= 0
+      );
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /policies/{policyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /waitlists/{waitlistId} {
+      allow read, delete: if isAdmin();
+      allow create: if true;
+    }
+
+    match /cart_reservations/{reservationId} {
+      allow read, write: if true;
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /_connection_test_/{testId} {
+      allow read: if true;
+    }
+
+    match /system_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /ui_history/{historyId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /layouts/{layoutId} {
+      allow read, write: if isAdmin();
+      match /history/{historyId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+
+      match /cart/{productId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    match /users {
+      allow list: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if true;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--body-font, "Inter"), ui-sans-serif, system-ui, sans-serif;
+  --font-headline: var(--heading-font, "Plus Jakarta Sans"), "Manrope", sans-serif;
+
+  --color-primary: var(--primary-color, #0046de);
+  --color-primary-container: var(--secondary-color, #2d60ff);
+  --color-surface: var(--bg-color, #f8f9fc);
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #434656;
+  --color-outline-variant: #c3c5d9;
+}
+
+@layer base {
+  :root {
+    --animation-speed: 0.3s;
+    --border-radius: 12px;
+    --card-padding: 16px;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface font-sans text-on-surface antialiased;
+    transition: background-color var(--animation-speed) cubic-bezier(0.4, 0, 0.2, 1), color var(--animation-speed) cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+.glass-glow {
+  border-top: 1px solid rgba(255, 255, 255, 0.4);
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Grobe Store",
+  "description": "E-commerce platform for Grobe Technologies, offering AI, electronics, and robotics components.",
+  "requestFramePermissions": ["geolocation", "accelerometer", "gyroscope", "magnetometer", "payment", "camera", "microphone", "ambient-light-sensor", "display-capture", "screen-wake-lock", "usb", "bluetooth", "serial", "hid"]
+}
