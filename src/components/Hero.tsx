@@ -1,19 +1,54 @@
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function Hero() {
+  const { settings } = useSettings();
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const heroSettings = settings.ui.heroSection || {
+    enableMultipleImages: false,
+    images: ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'],
+    autoChangeInterval: 5000,
+  };
+
+  const images = heroSettings.images && heroSettings.images.length > 0
+    ? heroSettings.images
+    : ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'];
+
+  useEffect(() => {
+    if (!heroSettings.enableMultipleImages || images.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev + 1) % images.length);
+    }, heroSettings.autoChangeInterval || 5000);
+
+    return () => clearInterval(interval);
+  }, [heroSettings.enableMultipleImages, images.length, heroSettings.autoChangeInterval]);
+
+  const hasBanner = settings.ui.topBanner?.enabled && 
+    (settings.ui.topBanner?.banners?.length ? settings.ui.topBanner.banners.length > 0 : !!settings.ui.topBanner?.imageUrl);
+
   return (
-    <section className="px-4 lg:px-8 max-w-[1920px] mx-auto mb-12 lg:mb-16 pt-20 lg:pt-24">
+    <section className={`px-4 lg:px-8 max-w-[1920px] mx-auto mb-12 lg:mb-16 ${hasBanner ? 'pt-6 lg:pt-8' : 'pt-20 lg:pt-24'}`}>
       <div className="relative overflow-hidden rounded-2xl lg:rounded-3xl bg-slate-900 h-[500px] lg:h-[600px] flex items-center group">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070" 
-            alt="Robotics Lab"
-            className="w-full h-full object-cover opacity-50 scale-105 group-hover:scale-100 transition-transform duration-[5s]"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-slate-950 via-slate-950/40 to-transparent"></div>
+        <div className="absolute inset-0 z-0 text-white">
+          <AnimatePresence mode="popLayout">
+            <motion.img
+              key={currentImageIndex}
+              initial={{ opacity: 0, scale: 1.05 }}
+              animate={{ opacity: 0.5, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.5, ease: "easeInOut" }}
+              src={images[currentImageIndex]}
+              alt="Hero Background"
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-[5s]"
+              referrerPolicy="no-referrer"
+            />
+          </AnimatePresence>
+          <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-slate-950 via-slate-950/60 to-transparent"></div>
         </div>
 
         <div className="relative z-10 px-6 lg:px-16 max-w-3xl">

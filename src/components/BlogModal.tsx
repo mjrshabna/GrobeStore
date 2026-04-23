@@ -26,6 +26,17 @@ export default function BlogModal({ isOpen, onClose, post, onSaved }: BlogModalP
   });
 
   useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (post) {
       setFormData(post);
     } else {

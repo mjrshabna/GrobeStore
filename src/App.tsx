@@ -8,8 +8,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { CartProvider } from './contexts/CartContext';
-import { SettingsProvider } from './contexts/SettingsContext';
+import { CartProvider, useCart } from './contexts/CartContext';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import LandingPage from './pages/LandingPage';
 import ProductDetails from './components/ProductDetails';
 import AdminDashboard from './components/AdminDashboard';
@@ -18,17 +18,18 @@ import CatalogPage from './pages/CatalogPage';
 import LoginPage from './pages/LoginPage';
 import BlogPage from './pages/BlogPage';
 import BlogPostDetails from './pages/BlogPostDetails';
+import MyAccountPage from './pages/MyAccountPage';
 import PolicyPage from './pages/PolicyPage';
 import MaintenancePage from './pages/MaintenancePage';
 import ScrollToTop from './components/ScrollToTop';
 import PageTransition from './components/PageTransition';
-import { useSettings } from './contexts/SettingsContext';
+import LoadingScreen from './components/LoadingScreen';
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
   
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <LoadingScreen message="Verifying Admin Access..." />;
   }
   
   if (!user || !isAdmin) {
@@ -41,10 +42,11 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function MaintenanceGuard({ children }: { children: React.ReactNode }) {
   const { settings, loading: settingsLoading } = useSettings();
   const { isAdmin, loading: authLoading } = useAuth();
+  const { loading: cartLoading } = useCart();
   const location = useLocation();
 
-  if (settingsLoading || authLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (settingsLoading || authLoading || cartLoading) {
+    return <LoadingScreen />;
   }
 
   // Allow admin to bypass maintenance mode
@@ -70,6 +72,7 @@ function AnimatedRoutes() {
           <Route path="/product" element={<PageTransition><ProductDetails /></PageTransition>} />
           <Route path="/product/:id" element={<PageTransition><ProductDetails /></PageTransition>} />
           <Route path="/cart" element={<PageTransition><CartPage /></PageTransition>} />
+          <Route path="/account" element={<PageTransition><MyAccountPage /></PageTransition>} />
           <Route path="/login" element={<PageTransition><LoginPage /></PageTransition>} />
           <Route path="/policy/:id" element={<PageTransition><PolicyPage /></PageTransition>} />
           <Route path="/admin" element={
@@ -84,19 +87,23 @@ function AnimatedRoutes() {
   );
 }
 
+import { LoadingProvider } from './contexts/LoadingContext';
+
 export default function App() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <CartProvider>
-          <BrowserRouter>
-            <ScrollToTop />
-            <Toaster position="top-center" />
-            <AnimatedRoutes />
-          </BrowserRouter>
-        </CartProvider>
-      </SettingsProvider>
-    </AuthProvider>
+    <LoadingProvider>
+      <AuthProvider>
+        <SettingsProvider>
+          <CartProvider>
+            <BrowserRouter>
+              <ScrollToTop />
+              <Toaster position="top-center" />
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </CartProvider>
+        </SettingsProvider>
+      </AuthProvider>
+    </LoadingProvider>
   );
 }
 

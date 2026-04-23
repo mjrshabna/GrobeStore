@@ -32,7 +32,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       showCategories: true,
       showBlog: true,
       pageLayout: '',
-      animationSpeed: 'normal'
+      animationSpeed: 'normal',
+      heroSection: {
+        enableMultipleImages: false,
+        images: ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'],
+        autoChangeInterval: 5000,
+      },
+      topBanner: {
+        enabled: false,
+        banners: [],
+        autoChangeInterval: 5000,
+        imageUrl: '',
+        linkUrl: ''
+      }
     }
   });
   const [loading, setLoading] = useState(true);

@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 import { sendEmail, emailTemplates } from "./src/services/server/emailService.ts";
 import { uploadToDrive } from "./src/services/server/backupService.ts";
 import { initializeApp as initializeClientApp } from 'firebase/app';
-import { getFirestore as getClientFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore as getClientFirestore, doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { initializeApp as initializeAdminApp, getApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
@@ -369,7 +369,9 @@ async function startServer() {
           }
           userReservations.get(data.email).items.push({
             productId: data.productId,
-            quantity: data.quantity
+            quantity: data.quantity,
+            name: "Saved Product",
+            price: 0
           });
         }
         
@@ -378,9 +380,10 @@ async function startServer() {
           const productRef = doc(clientDb, 'products', data.productId);
           const productDoc = await getDoc(productRef);
           
+          let currentStock = 0;
           if (productDoc.exists()) {
             const productData = productDoc.data();
-            const currentStock = productData.stock || 0;
+            currentStock = productData.stock || 0;
             
             if (data.email && userReservations.has(data.email)) {
               const userRes = userReservations.get(data.email);
@@ -388,20 +391,39 @@ async function startServer() {
               if (itemIndex !== -1) {
                 userRes.items[itemIndex] = {
                   ...userRes.items[itemIndex],
-                  name: productData.name,
-                  price: productData.price,
+                  name: productData.name || "Saved Product",
+                  price: productData.price || 0,
                   image: productData.images?.[0] || ''
                 };
               }
             }
+          } else {
+            // Remove the item from reservations if it no longer exists, so we don't email them about "Saved Product"
+            if (data.email && userReservations.has(data.email)) {
+              const userRes = userReservations.get(data.email);
+              userRes.items = userRes.items.filter((i: any) => i.productId !== data.productId);
+            }
+          }
 
+          try {
+            if (productDoc.exists()) {
+              if (adminDb) {
+                await adminDb.collection('products').doc(data.productId).update({ stock: currentStock + data.quantity });
+              } else {
+                await updateDoc(productRef, { stock: currentStock + data.quantity });
+              }
+            }
             if (adminDb) {
-              await adminDb.collection('products').doc(data.productId).update({ stock: currentStock + data.quantity });
               await adminDb.collection('cart_reservations').doc(docSnap.id).delete();
             } else {
-              // Fallback (might fail due to rules)
-              console.warn('Admin DB not available for stock release');
+              await deleteDoc(doc(clientDb, 'cart_reservations', docSnap.id));
             }
+          } catch (adminError) {
+             console.log(`Admin SDK failed, falling back to Client SDK for ${docSnap.id}`);
+             if (productDoc.exists()) {
+               await updateDoc(productRef, { stock: currentStock + data.quantity });
+             }
+             await deleteDoc(doc(clientDb, 'cart_reservations', docSnap.id));
           }
         } catch (err) {
           console.error(`Failed to release stock for ${docSnap.id}:`, err);
@@ -417,6 +439,10 @@ async function startServer() {
 
       if (emailConfig || process.env.SMTP_USER) {
         for (const [email, data] of userReservations.entries()) {
+          if (!data.items || data.items.length === 0) {
+             console.log(`Skipped sending abandoned cart email to ${email} because all items were deleted.`);
+             continue; // Don't send empty emails
+          }
           try {
             const html = emailTemplates.abandonedCart('Customer', data.items);
             const subject = "You left something in your cart!";

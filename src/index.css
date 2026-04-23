@@ -8,7 +8,7 @@
   --color-primary: var(--primary-color, #0046de);
   --color-primary-container: var(--secondary-color, #2d60ff);
   --color-surface: var(--bg-color, #f8f9fc);
-  --color-on-surface: #191c1e;
+  --color-on-surface: #1e293b;
   --color-on-surface-variant: #434656;
   --color-outline-variant: #c3c5d9;
 }

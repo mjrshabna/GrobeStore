@@ -1,5 +1,40 @@
-import { collection, doc, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc as fsSetDoc, addDoc as fsAddDoc, updateDoc as fsUpdateDoc, deleteDoc as fsDeleteDoc, serverTimestamp, query, orderBy, where, runTransaction, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+
+const wrappedLog = async (event: string, details: any) => {
+  try {
+    fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, details })
+    }).catch(() => {});
+  } catch (e) {}
+};
+
+export const setDoc = async (ref: any, data: any, options?: any) => {
+  const res = options ? await fsSetDoc(ref, data, options) : await fsSetDoc(ref, data);
+  await wrappedLog(`SET_${ref.path.split('/')[0].toUpperCase()}`, { path: ref.path, data, user: auth.currentUser?.email || 'guest' });
+  return res;
+};
+
+export const addDoc = async (ref: any, data: any) => {
+  const res = await fsAddDoc(ref, data);
+  await wrappedLog(`CREATE_${ref.path.split('/')[0].toUpperCase()}`, { path: ref.path, id: res.id, data, user: auth.currentUser?.email || 'guest' });
+  return res;
+};
+
+export const updateDoc = async (ref: any, data: any) => {
+  const res = await fsUpdateDoc(ref, data);
+  await wrappedLog(`UPDATE_${ref.path.split('/')[0].toUpperCase()}`, { path: ref.path, data, user: auth.currentUser?.email || 'guest' });
+  return res;
+};
+
+export const deleteDoc = async (ref: any) => {
+  const pathParts = ref.path ? ref.path.split('/') : ['UNKNOWN'];
+  const res = await fsDeleteDoc(ref);
+  await wrappedLog(`DELETE_${pathParts[0].toUpperCase()}`, { path: ref.path, user: auth.currentUser?.email || 'guest' });
+  return res;
+};
 
 export enum OperationType {
   CREATE = 'create',
@@ -252,8 +287,11 @@ export interface Order {
 export interface UserProfile {
   id?: string;
   email: string;
+  displayName?: string;
+  phone?: string;
   role: 'admin' | 'user';
   shippingAddress?: any;
+  shippingAddresses?: any[];
   createdAt?: any;
 }
 
@@ -313,6 +351,18 @@ export interface UISettings {
   containerWidth?: 'narrow' | 'normal' | 'wide' | 'full';
   buttonStyle?: 'solid' | 'outline' | 'ghost' | 'soft';
   shadowIntensity?: 'none' | 'light' | 'medium' | 'heavy';
+  heroSection?: {
+    enableMultipleImages: boolean;
+    images: string[];
+    autoChangeInterval: number;
+  };
+  topBanner?: {
+    enabled: boolean;
+    imageUrl?: string;
+    linkUrl?: string;
+    banners?: Array<{ imageUrl: string; linkUrl: string }>;
+    autoChangeInterval?: number;
+  };
 }
 
 export interface Settings {
@@ -342,7 +392,7 @@ export interface Settings {
   ui: UISettings;
 }
 
-const DEFAULT_UI_SETTINGS: UISettings = {
+export const DEFAULT_UI_SETTINGS: UISettings = {
   primaryColor: '#2563eb',
   secondaryColor: '#4f46e5',
   backgroundColor: '#f8fafc',
@@ -360,7 +410,19 @@ const DEFAULT_UI_SETTINGS: UISettings = {
   mobileMenuDesign: 'bottom',
   containerWidth: 'normal',
   buttonStyle: 'solid',
-  shadowIntensity: 'medium'
+  shadowIntensity: 'medium',
+  heroSection: {
+    enableMultipleImages: false,
+    images: ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'],
+    autoChangeInterval: 5000,
+  },
+  topBanner: {
+    enabled: false,
+    banners: [],
+    autoChangeInterval: 5000,
+    imageUrl: '',
+    linkUrl: ''
+  }
 };
 
 export const getSettings = async (): Promise<Settings | null> => {
@@ -819,6 +881,48 @@ export const layoutService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, `layouts/${layoutId}/history`);
       return [];
+    }
+  }
+};
+
+export const wishlistService = {
+  async getWishlist(userId: string): Promise<string[]> {
+    try {
+      const snap = await getDoc(doc(db, 'wishlists', userId));
+      if (snap.exists()) {
+        return snap.data().productIds || [];
+      }
+      return [];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `wishlists/${userId}`);
+      return [];
+    }
+  },
+
+  async toggleWishlist(userId: string, productId: string): Promise<void> {
+    try {
+      const docRef = doc(db, 'wishlists', userId);
+      const snap = await getDoc(docRef);
+      
+      if (!snap.exists()) {
+        await setDoc(docRef, { productIds: [productId], updatedAt: serverTimestamp() });
+      } else {
+        const productIds = snap.data().productIds as string[];
+        if (productIds.includes(productId)) {
+          await updateDoc(docRef, {
+            productIds: arrayRemove(productId),
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          await updateDoc(docRef, {
+            productIds: arrayUnion(productId),
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `wishlists/${userId}`);
+      throw error;
     }
   }
 };

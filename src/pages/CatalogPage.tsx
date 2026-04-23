@@ -71,7 +71,7 @@ export default function CatalogPage() {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesCategory = category === 'All' || p.category === category;
+    const matchesCategory = category === 'All' || p.category?.toLowerCase() === category.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -238,11 +238,11 @@ export default function CatalogPage() {
                   }
                 }}
                 key={product.id}
-                className="group bg-white rounded-3xl p-4 border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-900/5 transition-all flex flex-col"
+                className="group bg-white/70 backdrop-blur-md rounded-3xl p-5 border border-white/50 shadow-lg hover:shadow-2xl hover:shadow-blue-900/10 transition-all flex flex-col"
               >
-                <Link to={`/product/${product.id}`} className="block aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-4 relative">
+                <Link to={`/product/${product.id}`} className="block aspect-square bg-slate-100/50 rounded-2xl overflow-hidden mb-5 relative">
                   <img src={product.imageUrl} alt={product.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
-                  <div className="absolute top-3 left-3 px-2.5 py-1 bg-white/95 rounded-lg text-[10px] font-bold tracking-widest uppercase text-blue-600">
+                  <div className="absolute top-3 left-3 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-[10px] font-bold tracking-widest uppercase text-blue-600 shadow-sm">
                     {product.category}
                   </div>
                 </Link>
@@ -253,8 +253,8 @@ export default function CatalogPage() {
                     </Link>
                     <p className="text-slate-500 text-sm line-clamp-2 mb-4">{product.description}</p>
                   </div>
-                  <div className="flex items-center justify-between mt-auto">
-                    <div className="flex flex-col">
+                  <div className="flex flex-col mt-auto">
+                    <div className="flex items-baseline gap-2">
                       <span className="font-headline font-black text-xl text-slate-900">₹{getAdjustedPrice(product.price, settings.profitMargin).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                       {product.mrp && product.mrp > product.price && (
                         <div className="flex items-center gap-2">
@@ -265,9 +265,9 @@ export default function CatalogPage() {
                     </div>
                     <button 
                       onClick={(e) => { e.preventDefault(); handleAddToCart(product.id); }}
-                      className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors active:scale-95"
+                      className="w-full mt-4 py-3 bg-blue-600 text-white rounded-xl flex items-center justify-center gap-2 font-bold hover:bg-blue-700 transition-colors active:scale-95 text-sm shadow-md"
                     >
-                      <ShoppingCart className="w-5 h-5" />
+                      <ShoppingCart className="w-4 h-4" /> Add to Cart
                     </button>
                   </div>
                 </div>

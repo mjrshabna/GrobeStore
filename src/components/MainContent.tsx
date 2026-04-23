@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, ShoppingCart, Timer, ChevronLeft, ChevronRight, Cpu, Zap, Activity, Settings as SettingsIcon, Wrench, Link as LinkIcon } from 'lucide-react';
-import { Product, productService, getAdjustedPrice } from '../services/db';
+import { Product, productService, getAdjustedPrice, reviewService, Review } from '../services/db';
 import { useCart } from '../contexts/CartContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { Link } from 'react-router-dom';
@@ -10,19 +10,52 @@ import toast from 'react-hot-toast';
 export default function MainContent() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [productRatings, setProductRatings] = useState<Record<string, number>>({});
   const { addToCart } = useCart();
   const { settings } = useSettings();
   const trendingRef = useRef<HTMLDivElement>(null);
-  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true);
+
+  useEffect(() => {
+    if (!isAutoScrolling) return;
+
+    const interval = setInterval(() => {
+      if (trendingRef.current) {
+        const cardWidth = 300 + 24; // 300px width + 24px gap (approx)
+        const maxScroll = trendingRef.current.scrollWidth - trendingRef.current.clientWidth;
+        
+        if (trendingRef.current.scrollLeft >= maxScroll - 10) {
+          trendingRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          trendingRef.current.scrollBy({ left: cardWidth, behavior: 'smooth' });
+        }
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAutoScrolling]);
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const data = await productService.getAllProducts();
         setProducts(data);
+        setLoading(false); // Stop blocking the UI as soon as products are loaded
+        
+        // Fetch ratings for all products concurrently without blocking
+        const ratings: Record<string, number> = {};
+        await Promise.all(data.map(async (product) => {
+          const reviews = await reviewService.getProductReviews(product.id);
+          if (reviews.length > 0) {
+            const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+            ratings[product.id] = Number(avg.toFixed(1));
+          } else {
+            ratings[product.id] = 0;
+          }
+        }));
+        setProductRatings(ratings);
       } catch (error) {
         console.error(error);
-      } finally {
         setLoading(false);
       }
     };
@@ -131,7 +164,7 @@ export default function MainContent() {
                         </span>
                         <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
                           <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                          {(4.5 + (Math.random() * 0.5)).toFixed(1)}
+                          {productRatings[product.id] || 0.0}
                         </div>
                       </div>
                       <Link to={`/product/${product.id}`}>

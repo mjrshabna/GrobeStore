@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Github, Twitter, Linkedin, Mail, MapPin, Phone } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Policy, policyService } from '../services/db';
+import { Policy, policyService, productService } from '../services/db';
 import toast from 'react-hot-toast';
 
 export default function FooterSection() {
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchPolicies = async () => {
@@ -17,7 +18,17 @@ export default function FooterSection() {
         console.error('Failed to fetch policies for footer:', error);
       }
     };
+    const fetchCategories = async () => {
+      try {
+        const products = await productService.getAllProducts();
+        const cats = new Set(products.map(p => p.category).filter(Boolean));
+        setCategories(Array.from(cats).slice(0, 5));
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+      }
+    };
     fetchPolicies();
+    fetchCategories();
   }, []);
 
   return (
@@ -50,10 +61,16 @@ export default function FooterSection() {
           <div>
             <h4 className="font-bold text-slate-900 mb-6 text-sm uppercase tracking-widest">Shop</h4>
             <ul className="space-y-3 text-sm text-slate-500">
-              <li><Link to="/catalog?category=Components" className="hover:text-blue-600 transition-colors">Components</Link></li>
-              <li><Link to="/catalog?category=Robotics" className="hover:text-blue-600 transition-colors">Robotics</Link></li>
-              <li><Link to="/catalog?category=Sensors" className="hover:text-blue-600 transition-colors">Sensors</Link></li>
-              <li><Link to="/catalog?category=Power" className="hover:text-blue-600 transition-colors">Power</Link></li>
+              {categories.length > 0 ? categories.map((cat, i) => (
+                <li key={i}><Link to={`/catalog?category=${cat}`} className="hover:text-blue-600 transition-colors">{cat}</Link></li>
+              )) : (
+                <>
+                  <li><Link to="/catalog?category=Components" className="hover:text-blue-600 transition-colors">Components</Link></li>
+                  <li><Link to="/catalog?category=Robotics" className="hover:text-blue-600 transition-colors">Robotics</Link></li>
+                  <li><Link to="/catalog?category=Sensors" className="hover:text-blue-600 transition-colors">Sensors</Link></li>
+                  <li><Link to="/catalog?category=Power" className="hover:text-blue-600 transition-colors">Power</Link></li>
+                </>
+              )}
             </ul>
           </div>
 

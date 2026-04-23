@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
+import { useLoading } from './LoadingContext';
 import toast from 'react-hot-toast';
 import { Product } from '../services/db';
 import { reservationService } from '../services/reservationService';
@@ -86,6 +87,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [cartItems, setCartItems] = useState<CartItemData[]>([]);
   const [loading, setLoading] = useState(true);
+  const { setIsGlobalLoading } = useLoading();
 
   // Sync with Firebase when user is logged in
   useEffect(() => {
@@ -132,32 +134,46 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [cartItems, user]);
 
   const addToCart = async (productId: string, quantity = 1) => {
-    // Validate stock
-    const productDoc = await getDoc(doc(db, 'products', productId));
-    if (!productDoc.exists()) {
-      toast.error('Product not found');
-      return;
-    }
-    const productData = productDoc.data() as Product;
-    
-    const existingItem = cartItems.find(item => item.productId === productId);
-    const currentQuantity = existingItem ? existingItem.quantity : 0;
-    const newQuantity = currentQuantity + quantity;
-    
-    if (productData.stock < quantity) {
-      toast.error(`Only ${productData.stock} units available`);
-      return;
-    }
-
+    setIsGlobalLoading(true, 'Adding to Cart...');
     try {
-      const userId = user?.uid || getGuestId();
-      await reservationService.reserveStock(productId, newQuantity, userId, user?.email || undefined);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to reserve stock');
-      return;
-    }
+      // Validate stock
+      const productDoc = await getDoc(doc(db, 'products', productId));
+      if (!productDoc.exists()) {
+        toast.error('Product not found');
+        return;
+      }
+      const productData = productDoc.data() as Product;
+      
+      const existingItem = cartItems.find(item => item.productId === productId);
+      const currentQuantity = existingItem ? existingItem.quantity : 0;
+      const newQuantity = currentQuantity + quantity;
+      
+      if (productData.stock < quantity) {
+        toast.error(`Only ${productData.stock} units available`);
+        return;
+      }
 
-    if (!user) {
+      try {
+        const userId = user?.uid || getGuestId();
+        await reservationService.reserveStock(productId, newQuantity, userId, user?.email || undefined);
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to reserve stock');
+        return;
+      }
+
+      if (!user) {
+        setCartItems(prev => {
+          const existing = prev.find(item => item.productId === productId);
+          if (existing) {
+            return prev.map(item => item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item);
+          }
+          return [...prev, { productId, quantity }];
+        });
+        toast.success('Added to cart');
+        return;
+      }
+
+      // Optimistic update
       setCartItems(prev => {
         const existing = prev.find(item => item.productId === productId);
         if (existing) {
@@ -165,98 +181,153 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         return [...prev, { productId, quantity }];
       });
-      toast.success('Added to cart');
-      return;
-    }
 
-    // Optimistic update
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === productId);
-      if (existing) {
-        return prev.map(item => item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item);
-      }
-      return [...prev, { productId, quantity }];
-    });
-
-    const path = `users/${user.uid}/cart/${productId}`;
-    try {
-      await setDoc(doc(db, `users/${user.uid}/cart`, productId), {
-        productId,
-        quantity: newQuantity
-      });
-      toast.success('Added to cart');
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to add to cart');
-      // Revert optimistic update
-      setCartItems(prev => {
-        if (currentQuantity === 0) {
-          return prev.filter(item => item.productId !== productId);
-        }
-        return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
-      });
+      const path = `users/${user.uid}/cart/${productId}`;
       try {
-        handleFirestoreError(error, OperationType.WRITE, path);
-      } catch (e) {}
+        await setDoc(doc(db, `users/${user.uid}/cart`, productId), {
+          productId,
+          quantity: newQuantity
+        });
+        toast.success('Added to cart');
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to add to cart');
+        // Revert optimistic update
+        setCartItems(prev => {
+          if (currentQuantity === 0) {
+            return prev.filter(item => item.productId !== productId);
+          }
+          return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
+        });
+        try {
+          handleFirestoreError(error, OperationType.WRITE, path);
+        } catch (e) {}
+      }
+    } finally {
+      setIsGlobalLoading(false);
     }
   };
 
   const updateQuantity = async (productId: string, quantity: number) => {
-    // Validate stock
-    const productDoc = await getDoc(doc(db, 'products', productId));
-    if (!productDoc.exists()) {
-      toast.error('Product not found');
-      return;
-    }
-    const productData = productDoc.data() as Product;
-    
-    const existingItem = cartItems.find(item => item.productId === productId);
-    const currentQuantity = existingItem?.quantity || 0;
-    
-    if (productData.stock + currentQuantity < quantity) {
-      toast.error(`Only ${productData.stock + currentQuantity} units available`);
-      return;
-    }
-
-    // Optimistic update
-    if (quantity <= 0) {
-      setCartItems(prev => prev.filter(item => item.productId !== productId));
-    } else {
-      setCartItems(prev => prev.map(item => item.productId === productId ? { ...item, quantity } : item));
-    }
-
+    setIsGlobalLoading(true, 'Updating Quantity...');
     try {
-      const userId = user?.uid || getGuestId();
-      if (quantity > 0) {
-        await reservationService.reserveStock(productId, quantity, userId, user?.email || undefined);
-      } else {
-        await reservationService.releaseStock(productId, userId);
+      // Validate stock
+      const productDoc = await getDoc(doc(db, 'products', productId));
+      if (!productDoc.exists()) {
+        toast.error('Product not found');
+        return;
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update reservation');
-      // Revert optimistic update
-      if (currentQuantity <= 0) {
+      const productData = productDoc.data() as Product;
+      
+      const existingItem = cartItems.find(item => item.productId === productId);
+      const currentQuantity = existingItem?.quantity || 0;
+      
+      if (productData.stock + currentQuantity < quantity) {
+        toast.error(`Only ${productData.stock + currentQuantity} units available`);
+        return;
+      }
+
+      // Optimistic update
+      if (quantity <= 0) {
         setCartItems(prev => prev.filter(item => item.productId !== productId));
       } else {
-        setCartItems(prev => {
-          const exists = prev.find(item => item.productId === productId);
-          if (exists) {
-            return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
-          }
-          return [...prev, { productId, quantity: currentQuantity }];
-        });
+        setCartItems(prev => prev.map(item => item.productId === productId ? { ...item, quantity } : item));
       }
-      return;
-    }
 
-    if (!user) {
+      try {
+        const userId = user?.uid || getGuestId();
+        if (quantity > 0) {
+          await reservationService.reserveStock(productId, quantity, userId, user?.email || undefined);
+        } else {
+          await reservationService.releaseStock(productId, userId);
+        }
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to update reservation');
+        // Revert optimistic update
+        if (currentQuantity <= 0) {
+          setCartItems(prev => prev.filter(item => item.productId !== productId));
+        } else {
+          setCartItems(prev => {
+            const exists = prev.find(item => item.productId === productId);
+            if (exists) {
+              return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
+            }
+            return [...prev, { productId, quantity: currentQuantity }];
+          });
+        }
+        return;
+      }
+
+      if (!user) {
+        if (quantity <= 0) {
+          toast.success('Removed from cart');
+        }
+        return;
+      }
+
       if (quantity <= 0) {
-        toast.success('Removed from cart');
+        const path = `users/${user.uid}/cart/${productId}`;
+        try {
+          await deleteDoc(doc(db, `users/${user.uid}/cart`, productId));
+          toast.success('Removed from cart');
+        } catch (error) {
+          console.error(error);
+          toast.error('Failed to remove item');
+          // Revert optimistic update
+          setCartItems(prev => {
+            const exists = prev.find(item => item.productId === productId);
+            if (exists) {
+              return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
+            }
+            return [...prev, { productId, quantity: currentQuantity }];
+          });
+          try {
+            handleFirestoreError(error, OperationType.DELETE, path);
+          } catch (e) {}
+        }
+        return;
       }
-      return;
-    }
 
-    if (quantity <= 0) {
+      const path = `users/${user.uid}/cart/${productId}`;
+      try {
+        await setDoc(doc(db, `users/${user.uid}/cart`, productId), {
+          productId,
+          quantity
+        }, { merge: true });
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to update quantity');
+        // Revert optimistic update on error
+        setCartItems(prev => prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item));
+        try {
+          handleFirestoreError(error, OperationType.WRITE, path);
+        } catch (e) {}
+      }
+    } finally {
+      setIsGlobalLoading(false);
+    }
+  };
+
+  const removeFromCart = async (productId: string) => {
+    setIsGlobalLoading(true, 'Removing Item...');
+    try {
+      try {
+        const userId = user?.uid || getGuestId();
+        await reservationService.releaseStock(productId, userId);
+      } catch (error) {
+        console.error('Failed to release stock:', error);
+      }
+
+      if (!user) {
+        setCartItems(prev => prev.filter(item => item.productId !== productId));
+        toast.success('Removed from cart');
+        return;
+      }
+
+      // Optimistic update
+      const existingItem = cartItems.find(item => item.productId === productId);
+      setCartItems(prev => prev.filter(item => item.productId !== productId));
+
       const path = `users/${user.uid}/cart/${productId}`;
       try {
         await deleteDoc(doc(db, `users/${user.uid}/cart`, productId));
@@ -265,100 +336,51 @@ export function CartProvider({ children }: { children: ReactNode }) {
         console.error(error);
         toast.error('Failed to remove item');
         // Revert optimistic update
-        setCartItems(prev => {
-          const exists = prev.find(item => item.productId === productId);
-          if (exists) {
-            return prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item);
-          }
-          return [...prev, { productId, quantity: currentQuantity }];
-        });
+        if (existingItem) {
+          setCartItems(prev => [...prev, existingItem]);
+        }
         try {
           handleFirestoreError(error, OperationType.DELETE, path);
         } catch (e) {}
       }
-      return;
-    }
-
-    const path = `users/${user.uid}/cart/${productId}`;
-    try {
-      await setDoc(doc(db, `users/${user.uid}/cart`, productId), {
-        productId,
-        quantity
-      });
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to update quantity');
-      // Revert optimistic update on error
-      setCartItems(prev => prev.map(item => item.productId === productId ? { ...item, quantity: currentQuantity } : item));
-      try {
-        handleFirestoreError(error, OperationType.WRITE, path);
-      } catch (e) {}
-    }
-  };
-
-  const removeFromCart = async (productId: string) => {
-    try {
-      const userId = user?.uid || getGuestId();
-      await reservationService.releaseStock(productId, userId);
-    } catch (error) {
-      console.error('Failed to release stock:', error);
-    }
-
-    if (!user) {
-      setCartItems(prev => prev.filter(item => item.productId !== productId));
-      toast.success('Removed from cart');
-      return;
-    }
-
-    // Optimistic update
-    const existingItem = cartItems.find(item => item.productId === productId);
-    setCartItems(prev => prev.filter(item => item.productId !== productId));
-
-    const path = `users/${user.uid}/cart/${productId}`;
-    try {
-      await deleteDoc(doc(db, `users/${user.uid}/cart`, productId));
-      toast.success('Removed from cart');
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to remove item');
-      // Revert optimistic update
-      if (existingItem) {
-        setCartItems(prev => [...prev, existingItem]);
-      }
-      try {
-        handleFirestoreError(error, OperationType.DELETE, path);
-      } catch (e) {}
+    } finally {
+      setIsGlobalLoading(false);
     }
   };
 
   const clearCart = async () => {
+    setIsGlobalLoading(true, 'Clearing Cart...');
     try {
-      const userId = user?.uid || getGuestId();
-      await reservationService.clearUserReservations(userId);
-    } catch (error) {
-      console.error('Failed to clear reservations:', error);
-    }
+      try {
+        const userId = user?.uid || getGuestId();
+        await reservationService.clearUserReservations(userId);
+      } catch (error) {
+        console.error('Failed to clear reservations:', error);
+      }
 
-    if (!user) {
+      if (!user) {
+        setCartItems([]);
+        localStorage.removeItem('grobe_guest_cart');
+        return;
+      }
+
+      // Optimistic update
+      const previousItems = [...cartItems];
       setCartItems([]);
-      localStorage.removeItem('grobe_guest_cart');
-      return;
-    }
 
-    // Optimistic update
-    const previousItems = [...cartItems];
-    setCartItems([]);
-
-    try {
-      const batch = writeBatch(db);
-      cartItems.forEach(item => {
-        batch.delete(doc(db, `users/${user.uid}/cart`, item.productId));
-      });
-      await batch.commit();
-    } catch (error) {
-      console.error(error);
-      // Revert optimistic update
-      setCartItems(previousItems);
+      try {
+        const batch = writeBatch(db);
+        cartItems.forEach(item => {
+          batch.delete(doc(db, `users/${user.uid}/cart`, item.productId));
+        });
+        await batch.commit();
+      } catch (error) {
+        console.error(error);
+        // Revert optimistic update
+        setCartItems(previousItems);
+      }
+    } finally {
+      setIsGlobalLoading(false);
     }
   };
 

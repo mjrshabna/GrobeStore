@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Mail } from 'lucide-react';
 import { waitlistService } from '../services/db';
 import toast from 'react-hot-toast';
@@ -11,6 +11,13 @@ interface NotifyMePopupProps {
 export default function NotifyMePopup({ productId, onClose }: NotifyMePopupProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

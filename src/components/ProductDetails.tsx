@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -15,6 +15,8 @@ import Navbar from './Navbar';
 import FooterSection from './FooterSection';
 import BottomNav from './BottomNav';
 import NotifyMePopup from './NotifyMePopup';
+import ImageZoomModal from './ImageZoomModal';
+import LoadingScreen from './LoadingScreen';
 import { Product, productService, getAdjustedPrice, reviewService, waitlistService, Review } from '../services/db';
 import { auth } from '../lib/firebase';
 import { useCart } from '../contexts/CartContext';
@@ -30,10 +32,22 @@ export default function ProductDetails() {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [showNotifyPopup, setShowNotifyPopup] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const thumbnailContainerRef = useRef<HTMLDivElement>(null);
   const { addToCart, cartItems } = useCart();
   const { settings } = useSettings();
 
   const isInCart = cartItems.some(item => item.productId === id);
+
+  useEffect(() => {
+    // Scroll to active thumbnail
+    const container = thumbnailContainerRef.current;
+    if (container && container.children[currentImageIndex]) {
+      const thumbnail = container.children[currentImageIndex] as HTMLElement;
+      thumbnail.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [currentImageIndex]);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -73,6 +87,11 @@ export default function ProductDetails() {
     fetchProduct();
   }, [id]);
 
+  const allImages = product ? [product.imageUrl, ...(product.images || [])] : [];
+
+  const nextImage = () => setCurrentImageIndex((prev) => (prev + 1) % allImages.length);
+  const prevImage = () => setCurrentImageIndex((prev) => (prev - 1 + allImages.length) % allImages.length);
+
   const handleAddToCart = async () => {
     if (!product) return;
     if (isInCart) {
@@ -101,11 +120,7 @@ export default function ProductDetails() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#f8f9fc] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <LoadingScreen message="Loading Product Intel..." />;
   }
 
   if (!product) {
@@ -164,25 +179,13 @@ export default function ProductDetails() {
             className="lg:col-span-7 flex flex-col-reverse md:flex-row gap-6"
           >
             {/* Thumbnails */}
-            {(product.images && product.images.length > 0) && (
-              <div className="flex md:flex-col gap-4 overflow-x-auto md:overflow-y-auto md:w-24 shrink-0 scrollbar-hide pb-2 md:pb-0">
-                <button 
-                  onClick={() => {
-                    const mainImg = document.getElementById('main-product-image') as HTMLImageElement;
-                    if (mainImg) mainImg.src = product.imageUrl;
-                  }}
-                  className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-slate-100 border-2 border-transparent focus:border-blue-600 overflow-hidden shrink-0"
-                >
-                  <img src={product.imageUrl} alt="Thumbnail primary" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </button>
-                {product.images.map((img, idx) => (
+            {allImages.length > 1 && (
+              <div ref={thumbnailContainerRef} className="flex md:flex-col gap-4 overflow-x-auto md:overflow-y-auto md:w-24 shrink-0 scrollbar-hide pb-2 md:pb-0">
+                {allImages.map((img, idx) => (
                   <button 
                     key={idx}
-                    onClick={() => {
-                      const mainImg = document.getElementById('main-product-image') as HTMLImageElement;
-                      if (mainImg) mainImg.src = img;
-                    }}
-                    className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-slate-100 border-2 border-transparent focus:border-blue-600 overflow-hidden shrink-0"
+                    onClick={() => setCurrentImageIndex(idx)}
+                    className={`w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-slate-100 border-2 ${currentImageIndex === idx ? 'border-blue-600' : 'border-transparent'} overflow-hidden shrink-0`}
                   >
                     <img src={img} alt={`Thumbnail ${idx}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </button>
@@ -191,16 +194,40 @@ export default function ProductDetails() {
             )}
 
             <div className="relative flex-1 bg-slate-100 rounded-[2rem] overflow-hidden group">
-              <motion.img 
-                id="main-product-image"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                src={product.imageUrl} 
-                alt={product.name} 
-                className="w-full aspect-square object-cover transition-transform duration-700 group-hover:scale-105"
-                referrerPolicy="no-referrer"
-              />
+              <motion.div
+                className="w-full aspect-square cursor-pointer"
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                onDragEnd={(event, info) => {
+                  if (info.offset.x < -50) nextImage();
+                  else if (info.offset.x > 50) prevImage();
+                }}
+                onClick={() => setIsZoomOpen(true)}
+              >
+                <motion.img 
+                  key={allImages[currentImageIndex]}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  src={allImages[currentImageIndex]} 
+                  alt={product.name} 
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  referrerPolicy="no-referrer"
+                />
+              </motion.div>
+              
+              {/* Pagination Dots */}
+              {allImages.length > 1 && (
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+                  {allImages.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentImageIndex(idx)}
+                      className={`w-2 h-2 rounded-full transition-colors ${currentImageIndex === idx ? 'bg-blue-600' : 'bg-white/80'}`}
+                    />
+                  ))}
+                </div>
+              )}
               
               {/* Spec Overlay Glass Module */}
               <div className="absolute bottom-4 right-4 md:bottom-8 md:right-8 p-4 md:p-6 bg-white/70 backdrop-blur-2xl rounded-2xl border-t border-l border-white/40 shadow-2xl max-w-[200px] md:max-w-[240px]">
@@ -258,8 +285,8 @@ export default function ProductDetails() {
               <div className="flex items-end gap-4">
                 <div className="space-y-1">
                   <span className="text-xs font-bold tracking-widest uppercase opacity-40">Unit Price</span>
-                  <div className="flex items-baseline gap-3">
-                    <div className="text-3xl md:text-4xl font-headline font-bold tracking-tighter text-slate-900">
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl md:text-4xl font-headline font-bold tracking-tighter text-slate-900 whitespace-nowrap">
                       ₹{getAdjustedPrice(product.price, settings.profitMargin).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </div>
                     {product.mrp && product.mrp > product.price && (
@@ -446,6 +473,11 @@ export default function ProductDetails() {
         <FooterSection />
       </div>
       <BottomNav />
+      <ImageZoomModal 
+        isOpen={isZoomOpen} 
+        onClose={() => setIsZoomOpen(false)} 
+        image={allImages[currentImageIndex]} 
+      />
     </div>
   );
 }

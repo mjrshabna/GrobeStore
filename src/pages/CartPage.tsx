@@ -34,6 +34,17 @@ export default function CartPage() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
+  useEffect(() => {
+    if (showGuestPrompt || isCheckoutOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showGuestPrompt, isCheckoutOpen]);
+
   const handleProceedToCheckout = () => {
     if (!user) {
       setShowGuestPrompt(true);
@@ -81,9 +92,11 @@ export default function CartPage() {
   
   const totalDiscount = totalMrp - subtotal;
   
-  const platformFee = settings.platformFee || 0;
-  const shippingCharge = settings.shippingCharge || 0;
+  const platformFee = cartItems.length > 0 ? (settings.platformFee || 0) : 0;
+  const shippingCharge = cartItems.length > 0 ? (settings.shippingCharge || 0) : 0;
   const total = subtotal + platformFee + shippingCharge;
+
+  const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="min-h-screen bg-[#f8f9fc] text-[#191c1e] font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col">
@@ -93,7 +106,7 @@ export default function CartPage() {
         <header className="mb-8 md:mb-12">
           <h1 className="text-3xl md:text-4xl font-headline font-extrabold tracking-tighter text-slate-900 mb-2">Shopping Cart</h1>
           <p className="text-slate-500 font-sans text-xs md:text-sm tracking-widest uppercase font-semibold">
-            {cartItems.length} {cartItems.length === 1 ? 'ITEM' : 'ITEMS'} READY FOR CHECKOUT
+            {totalQuantity} {totalQuantity === 1 ? 'ITEM' : 'ITEMS'} READY FOR CHECKOUT
           </p>
         </header>
 
@@ -102,9 +115,7 @@ export default function CartPage() {
           <section className="lg:col-span-8 space-y-4 md:space-y-6">
             {cartLoading || loading ? (
               <div className="animate-pulse space-y-4">
-                {[1, 2].map(i => (
-                  <div key={i} className="bg-white rounded-2xl h-48 border border-slate-100"></div>
-                ))}
+                <div className="bg-white rounded-3xl h-64 border border-slate-100"></div>
               </div>
             ) : cartItems.length === 0 ? (
               <div className="bg-white rounded-xl p-12 text-center border border-slate-100 shadow-sm">
@@ -128,87 +139,98 @@ export default function CartPage() {
                     }
                   }
                 }}
-                className="space-y-4 md:space-y-6"
+                className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden"
               >
-                {cartItems.map(item => {
-                  const product = products[item.productId];
-                  if (!product) return null;
+                {/* Desktop Header */}
+                <div className="hidden md:grid grid-cols-12 gap-4 px-8 py-5 bg-slate-50/50 border-b border-slate-100">
+                  <div className="col-span-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item details</div>
+                  <div className="col-span-2 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</div>
+                  <div className="col-span-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit Price</div>
+                  <div className="col-span-2 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Subtotal</div>
+                </div>
 
-                  return (
-                    <motion.div 
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        show: { 
-                          opacity: 1, 
-                          y: 0,
-                          transition: {
-                            type: 'spring',
-                            stiffness: 100,
-                            damping: 15
+                <div className="divide-y divide-slate-100">
+                  {cartItems.map(item => {
+                    const product = products[item.productId];
+                    if (!product) return null;
+                    const itemPrice = getAdjustedPrice(product.price, settings.profitMargin);
+                    const itemTotal = itemPrice * item.quantity;
+
+                    return (
+                      <motion.div 
+                        variants={{
+                          hidden: { opacity: 0, x: -20 },
+                          show: { 
+                            opacity: 1, 
+                            x: 0,
+                            transition: {
+                              type: 'spring',
+                              stiffness: 100,
+                              damping: 15
+                            }
                           }
-                        }
-                      }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      key={item.productId} 
-                      className="bg-white rounded-2xl md:rounded-xl p-4 md:p-6 flex flex-col sm:flex-row gap-6 md:gap-8 shadow-sm border border-slate-100 transition-all hover:shadow-md"
-                    >
-                    <div className="w-full sm:w-32 md:w-48 h-48 sm:h-32 md:h-48 bg-slate-50 rounded-xl overflow-hidden flex-shrink-0 p-4">
-                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
-                    </div>
-                    
-                    <div className="flex-grow flex flex-col justify-between">
-                      <div>
-                        <div className="flex flex-col sm:flex-row justify-between items-start mb-2 gap-2">
-                          <h3 className="text-lg md:text-xl font-bold font-headline leading-tight text-slate-900">{product.name}</h3>
-                          <div className="flex flex-col items-end">
-                            <span className="text-lg md:text-xl font-bold font-headline text-blue-600">₹{getAdjustedPrice(product.price, settings.profitMargin).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        }}
+                        exit={{ opacity: 0, x: 20 }}
+                        key={item.productId} 
+                        className="px-4 md:px-8 py-6 group hover:bg-slate-50/30 transition-colors"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                          {/* Product Info */}
+                          <div className="md:col-span-6 flex items-center gap-4 md:gap-6">
+                            <div className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 rounded-2xl overflow-hidden flex-shrink-0 p-2 border border-slate-100 group-hover:scale-105 transition-transform duration-500">
+                              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+                            </div>
+                            <div className="flex-grow">
+                              <h3 className="text-sm md:text-base font-bold text-slate-900 mb-1 leading-tight">{product.name}</h3>
+                              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-2">{product.category}</p>
+                              <button 
+                                onClick={() => removeFromCart(item.productId)}
+                                className="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Remove Item
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Quantity Selector */}
+                          <div className="md:col-span-2 flex justify-center">
+                            <div className="flex items-center bg-slate-100/80 rounded-xl p-1 gap-2">
+                              <button 
+                                onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                                className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-white rounded-lg transition-all"
+                              >
+                                <Minus className="w-4 h-4" />
+                              </button>
+                              <span className="font-bold text-sm text-slate-900 w-6 text-center">{item.quantity}</span>
+                              <button 
+                                onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                                className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-white rounded-lg transition-all"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Price Details */}
+                          <div className="md:col-span-2 hidden md:flex flex-col items-end">
+                            <span className="text-sm font-bold text-slate-900">₹{itemPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                             {product.mrp && product.mrp > product.price && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-400 line-through">₹{product.mrp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                <span className="text-[10px] font-bold text-emerald-600">{Math.round(((product.mrp - product.price) / product.mrp) * 100)}% OFF</span>
-                              </div>
+                              <span className="text-[10px] text-slate-400 line-through">₹{product.mrp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                             )}
                           </div>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-x-6 gap-y-3 mt-4">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] md:text-[10px] font-black text-slate-400 tracking-[0.1em] uppercase mb-0.5">Category</span>
-                            <span className="text-xs md:text-sm font-medium text-slate-700">{product.category}</span>
+
+                          {/* Item Total */}
+                          <div className="md:col-span-2 flex md:flex-col items-center md:items-end justify-between md:justify-center border-t border-slate-50 md:border-0 pt-4 md:pt-0">
+                            <span className="md:hidden text-xs font-bold text-slate-400 uppercase tracking-widest">Total</span>
+                            <span className="text-base md:text-lg font-black text-blue-600">₹{itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-6 md:mt-8 pt-4 sm:pt-0 border-t border-slate-100 sm:border-t-0">
-                        <div className="flex items-center bg-slate-100 rounded-full px-2 py-1 gap-4">
-                          <button 
-                            onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-white rounded-full transition-all"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="font-bold text-sm text-slate-900 w-4 text-center">{item.quantity}</span>
-                          <button 
-                            onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-white rounded-full transition-all"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                        
-                        <button 
-                          onClick={() => removeFromCart(item.productId)}
-                          className="flex items-center gap-2 text-slate-400 hover:text-red-500 transition-colors text-sm font-medium"
-                        >
-                          <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
-                          <span className="hidden sm:inline">Remove</span>
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
             )}
           </section>
 
@@ -230,11 +252,15 @@ export default function CartPage() {
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Platform Fee</span>
-                  <span className="font-semibold text-slate-900">₹{platformFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-semibold text-slate-900">
+                    {cartItems.length > 0 ? `₹${platformFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Shipping</span>
-                  <span className="font-semibold text-slate-900">₹{shippingCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-semibold text-slate-900">
+                    {cartItems.length > 0 ? `₹${shippingCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
+                  </span>
                 </div>
               </div>
               

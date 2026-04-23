@@ -37,9 +37,10 @@ import {
   CheckCircle2,
   CreditCard,
   Sparkles,
-  Send
+  Send,
+  RotateCcw
 } from 'lucide-react';
-import { Product, Order, BlogPost, UserProfile, Settings as AppSettings, Coupon, Policy, UIHistoryEntry, productService, orderService, blogService, userService, couponService, policyService, getSettings, updateSettings, clearAllData, getAdjustedPrice, uiHistoryService, logService } from '../services/db';
+import { Product, Order, BlogPost, UserProfile, Settings as AppSettings, Coupon, Policy, UIHistoryEntry, productService, orderService, blogService, userService, couponService, policyService, getSettings, updateSettings, clearAllData, getAdjustedPrice, uiHistoryService, logService, DEFAULT_UI_SETTINGS } from '../services/db';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import ProductModal from './ProductModal';
@@ -52,10 +53,13 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useLoading } from '../contexts/LoadingContext';
 import { useNavigate } from 'react-router-dom';
+import LoadingScreen from './LoadingScreen';
 
 export default function AdminDashboard() {
   const { logout, user } = useAuth();
+  const { setIsGlobalLoading } = useLoading();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -104,7 +108,17 @@ export default function AdminDashboard() {
       showCategories: true,
       showBlog: true,
       pageLayout: '',
-      animationSpeed: 'normal'
+      animationSpeed: 'normal',
+      heroSection: {
+        enableMultipleImages: false,
+        images: ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'],
+        autoChangeInterval: 5000
+      },
+      topBanner: {
+        enabled: false,
+        imageUrl: '',
+        linkUrl: ''
+      }
     }
   });
   const [isOrderDetailsOpen, setIsOrderDetailsOpen] = useState(false);
@@ -148,17 +162,44 @@ export default function AdminDashboard() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: 'product' | 'blog' | 'coupon' } | null>(null);
 
   const handleUpdateUISettings = async (newUI: Partial<AppSettings['ui']>) => {
-    const updatedSettings = {
-      ...settings,
-      ui: { ...settings.ui, ...newUI }
-    };
-    setSettings(updatedSettings);
+    setIsGlobalLoading(true, 'Updating Theme...');
     try {
+      const updatedSettings = {
+        ...settings,
+        ui: { ...settings.ui, ...newUI }
+      };
       await updateSettings(updatedSettings);
-      toast.success('UI settings updated');
+      setSettings(updatedSettings);
+      toast.success('Theme settings updated');
+      await logClientEvent('UPDATE_UI_SETTINGS', { ui: newUI });
+      fetchData();
     } catch (error) {
-      toast.error('Failed to update UI settings');
+      toast.error('Failed to update theme');
+    } finally {
+      setIsGlobalLoading(false);
     }
+  };
+
+  const handleRestoreDefaults = () => {
+    setConfirmDialog({
+      title: 'Restore Default Settings',
+      message: 'This will reset all UI/UX customization to factory defaults. Are you sure?',
+      onConfirm: async () => {
+        setIsGlobalLoading(true, 'Restoring Defaults...');
+        try {
+          const updatedSettings = { ...settings, ui: DEFAULT_UI_SETTINGS };
+          await updateSettings(updatedSettings);
+          setSettings(updatedSettings);
+          toast.success('UI/UX settings restored to defaults');
+          await logClientEvent('RESTORE_UI_DEFAULTS', { userId: user?.uid });
+          fetchData();
+        } catch (error) {
+          toast.error('Failed to restore defaults');
+        } finally {
+          setIsGlobalLoading(false);
+        }
+      }
+    });
   };
 
   const handleSaveUIHistory = async () => {
@@ -277,9 +318,17 @@ export default function AdminDashboard() {
       setLoading(false);
     });
 
+    const qLogs = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'));
+    const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
+      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error('Error fetching logs:', error);
+    });
+
     return () => {
       unsubscribeProducts();
       unsubscribeOrders();
+      unsubscribeLogs();
     };
   }, []);
 
@@ -366,6 +415,7 @@ export default function AdminDashboard() {
       message: `Are you sure you want to delete ${selectedProducts.length} products? This action is irreversible.`,
       isDanger: true,
       onConfirm: async () => {
+        setIsGlobalLoading(true, 'Deleting Products...');
         try {
           await Promise.all(selectedProducts.map(id => productService.deleteProduct(id)));
           toast.success('Selected products deleted');
@@ -373,6 +423,8 @@ export default function AdminDashboard() {
           fetchData();
         } catch (error) {
           toast.error('Failed to delete some products');
+        } finally {
+          setIsGlobalLoading(false);
         }
       }
     });
@@ -399,6 +451,7 @@ export default function AdminDashboard() {
       message: `Are you sure you want to delete ${selectedOrders.length} orders? This action is irreversible.`,
       isDanger: true,
       onConfirm: async () => {
+        setIsGlobalLoading(true, 'Deleting Orders...');
         try {
           await Promise.all(selectedOrders.map(id => orderService.deleteOrder(id)));
           toast.success('Selected orders deleted');
@@ -406,6 +459,8 @@ export default function AdminDashboard() {
           fetchData();
         } catch (error) {
           toast.error('Failed to delete some orders');
+        } finally {
+          setIsGlobalLoading(false);
         }
       }
     });
@@ -426,6 +481,7 @@ export default function AdminDashboard() {
   };
 
   const handleUpdateOrderStatus = async (id: string, status: Order['status']) => {
+    setIsGlobalLoading(true, `Updating status to ${status}...`);
     try {
       await orderService.updateOrderStatus(id, status);
       toast.success('Order status updated');
@@ -453,6 +509,8 @@ export default function AdminDashboard() {
       fetchData();
     } catch (error) {
       toast.error('Failed to update status');
+    } finally {
+      setIsGlobalLoading(false);
     }
   };
 
@@ -475,6 +533,7 @@ export default function AdminDashboard() {
         name: 'Example Product',
         description: 'Detailed description here',
         price: 999,
+        mrp: 1299,
         category: 'Components',
         imageUrl: 'https://picsum.photos/seed/product/400/400',
         images: 'https://picsum.photos/seed/p1/400/400, https://picsum.photos/seed/p2/400/400',
@@ -512,6 +571,7 @@ export default function AdminDashboard() {
             name: String(item.name || ''),
             description: String(item.description || ''),
             price: Number(item.price || 0),
+            mrp: item.mrp ? Number(item.mrp) : undefined,
             category: String(item.category || 'Uncategorized'),
             imageUrl: String(item.imageUrl || (images.length > 0 ? images[0] : '')),
             images: images,
@@ -567,7 +627,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    setIsDeletingAll(true);
+    setIsGlobalLoading(true, 'Wiping All Data...');
     try {
       await clearAllData();
       await logClientEvent('WIPE_ALL_DATA', { userId: user?.uid });
@@ -578,7 +638,7 @@ export default function AdminDashboard() {
       console.error(error);
       toast.error('Failed to delete all data');
     } finally {
-      setIsDeletingAll(false);
+      setIsGlobalLoading(false);
     }
   };
 
@@ -685,11 +745,7 @@ export default function AdminDashboard() {
 
         {/* Main Content */}
         <main ref={mainContentRef} className="flex-1 overflow-y-auto p-4 sm:p-8">
-          {loading && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-slate-500 font-bold">Loading data...</div>
-            </div>
-          )}
+          {loading && <LoadingScreen message="Initialising Admin Control Panel..." />}
           {!loading && activeTab === 'dashboard' && (
             <>
               {/* Header Section */}
@@ -1410,12 +1466,25 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 mb-6">
                   <FileText className="w-6 h-6 text-slate-600" />
-                  <h3 className="text-lg font-bold text-slate-900">System Logs</h3>
+                  <h3 className="text-lg font-bold text-slate-900">System Logs Terminal</h3>
                 </div>
-                <div className="bg-slate-900 rounded-2xl p-4 font-mono text-xs text-slate-300 h-64 overflow-y-auto space-y-2">
-                  <div className="flex gap-4"><span className="text-slate-500">[{new Date().toISOString()}]</span><span className="text-emerald-400">INFO</span><span>System initialized</span></div>
-                  <div className="flex gap-4"><span className="text-slate-500">[{new Date(Date.now() - 3600000).toISOString()}]</span><span className="text-blue-400">SYNC</span><span>Products synchronized</span></div>
-                  <div className="flex gap-4"><span className="text-slate-500">[{new Date(Date.now() - 7200000).toISOString()}]</span><span className="text-emerald-400">INFO</span><span>Settings updated by admin</span></div>
+                <div className="bg-slate-900 rounded-2xl p-4 font-mono text-xs text-slate-300 h-96 overflow-y-auto space-y-2">
+                  {logs.length > 0 ? logs.map((log: any, index: number) => (
+                    <div key={index} className="flex gap-4">
+                      <span className="text-slate-500 shrink-0">[{new Date(log.timestamp).toISOString()}]</span>
+                      <span className={
+                        log.event?.includes('DELETE') ? 'text-rose-400 shrink-0' :
+                        log.event?.includes('UPDATE') ? 'text-amber-400 shrink-0' :
+                        log.event?.includes('CREATE') ? 'text-emerald-400 shrink-0' :
+                        'text-blue-400 shrink-0'
+                      }>
+                        {log.event}
+                      </span>
+                      <span className="text-slate-300 break-words">{JSON.stringify(log.details)}</span>
+                    </div>
+                  )) : (
+                    <div className="text-slate-500">No logs generated yet.</div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1921,6 +1990,13 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
+                    onClick={handleRestoreDefaults}
+                    className="bg-slate-100 text-slate-700 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all border border-slate-200"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                    Reset to Defaults
+                  </button>
+                  <button 
                     onClick={() => handleUpdateUISettings(settings.ui)}
                     className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
                   >
@@ -2179,6 +2255,331 @@ export default function AdminDashboard() {
                         <option value="heavy">Heavy Shadows (Neumorphic)</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+
+                {/* Hero Section Settings */}
+                <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    Hero Section Image Settings
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="font-medium text-sm text-slate-700">Enable Multiple Image Slideshow</span>
+                      <button 
+                        onClick={() => {
+                          const currentHeroSettings = settings.ui.heroSection || {
+                            enableMultipleImages: false,
+                            images: ['https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'],
+                            autoChangeInterval: 5000
+                          };
+                          setSettings({
+                            ...settings, 
+                            ui: {
+                              ...settings.ui, 
+                              heroSection: {
+                                ...currentHeroSettings,
+                                enableMultipleImages: !currentHeroSettings.enableMultipleImages
+                              }
+                            }
+                          });
+                        }}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${
+                          settings.ui.heroSection?.enableMultipleImages ? 'bg-emerald-500' : 'bg-slate-300'
+                        }`}
+                      >
+                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${
+                          settings.ui.heroSection?.enableMultipleImages ? 'left-5.5' : 'left-0.5'
+                        }`} style={{ left: settings.ui.heroSection?.enableMultipleImages ? '22px' : '2px' }} />
+                      </button>
+                    </div>
+
+                    {!settings.ui.heroSection?.enableMultipleImages && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Default Image URL</label>
+                        <input 
+                          type="text"
+                          value={settings.ui.heroSection?.images?.[0] || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=2070'}
+                          onChange={(e) => {
+                            const newImages = [...(settings.ui.heroSection?.images || [])];
+                            if (newImages.length === 0) newImages.push('');
+                            newImages[0] = e.target.value;
+                            setSettings({
+                              ...settings,
+                              ui: {
+                                ...settings.ui,
+                                heroSection: {
+                                  ...(settings.ui.heroSection || { enableMultipleImages: false, autoChangeInterval: 5000, images: [] }),
+                                  images: newImages
+                                }
+                              }
+                            });
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                          placeholder="https://..."
+                        />
+                      </div>
+                    )}
+
+                    {settings.ui.heroSection?.enableMultipleImages && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Slideshow Interval (ms)</label>
+                          <input 
+                            type="number"
+                            min="1000"
+                            step="500"
+                            value={settings.ui.heroSection?.autoChangeInterval || 5000}
+                            onChange={(e) => setSettings({
+                              ...settings,
+                              ui: {
+                                ...settings.ui,
+                                heroSection: {
+                                  ...(settings.ui.heroSection || { enableMultipleImages: true, images: [] }),
+                                  autoChangeInterval: parseInt(e.target.value) || 5000
+                                }
+                              }
+                            })}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Image URLs</label>
+                          <div className="space-y-2">
+                            {(settings.ui.heroSection?.images || []).map((imgUrl, index) => (
+                              <div key={index} className="flex gap-2">
+                                <input 
+                                  type="text"
+                                  value={imgUrl}
+                                  onChange={(e) => {
+                                    const newImages = [...(settings.ui.heroSection?.images || [])];
+                                    newImages[index] = e.target.value;
+                                    setSettings({
+                                      ...settings,
+                                      ui: {
+                                        ...settings.ui,
+                                        heroSection: {
+                                          ...(settings.ui.heroSection || { enableMultipleImages: true, autoChangeInterval: 5000, images: [] }),
+                                          images: newImages
+                                        }
+                                      }
+                                    });
+                                  }}
+                                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                                  placeholder="https://..."
+                                />
+                                <button
+                                  onClick={() => {
+                                    const newImages = [...(settings.ui.heroSection?.images || [])];
+                                    newImages.splice(index, 1);
+                                    setSettings({
+                                      ...settings,
+                                      ui: {
+                                        ...settings.ui,
+                                        heroSection: {
+                                          ...(settings.ui.heroSection || { enableMultipleImages: true, autoChangeInterval: 5000, images: [] }),
+                                          images: newImages
+                                        }
+                                      }
+                                    });
+                                  }}
+                                  className="p-2 bg-red-50 text-red-600 rounded-lg shrink-0 hover:bg-red-100"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => {
+                                setSettings({
+                                  ...settings,
+                                  ui: {
+                                    ...settings.ui,
+                                    heroSection: {
+                                      ...(settings.ui.heroSection || { enableMultipleImages: true, autoChangeInterval: 5000, images: [] }),
+                                      images: [...(settings.ui.heroSection?.images || []), '']
+                                    }
+                                  }
+                                });
+                              }}
+                              className="w-full py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2 mt-2"
+                            >
+                              <Plus className="w-4 h-4" /> Add Image URL
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Banner Settings */}
+                <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    Top Banner Settings
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="font-medium text-sm text-slate-700">Enable Top Banner</span>
+                      <button 
+                        onClick={() => {
+                          const currentBannerSettings = settings.ui.topBanner || {
+                            enabled: false,
+                            banners: [],
+                            autoChangeInterval: 5000,
+                            imageUrl: '',
+                            linkUrl: ''
+                          };
+                          setSettings({
+                            ...settings, 
+                            ui: {
+                              ...settings.ui, 
+                              topBanner: {
+                                ...currentBannerSettings,
+                                enabled: !currentBannerSettings.enabled
+                              }
+                            }
+                          });
+                        }}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${
+                          settings.ui.topBanner?.enabled ? 'bg-emerald-500' : 'bg-slate-300'
+                        }`}
+                      >
+                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${
+                          settings.ui.topBanner?.enabled ? 'left-5.5' : 'left-0.5'
+                        }`} style={{ left: settings.ui.topBanner?.enabled ? '22px' : '2px' }} />
+                      </button>
+                    </div>
+
+                    {settings.ui.topBanner?.enabled && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Slideshow Interval (ms)</label>
+                          <input 
+                            type="number"
+                            min="1000"
+                            step="500"
+                            value={settings.ui.topBanner?.autoChangeInterval || 5000}
+                            onChange={(e) => setSettings({
+                              ...settings,
+                              ui: {
+                                ...settings.ui,
+                                topBanner: {
+                                  ...(settings.ui.topBanner || { enabled: true, banners: [], imageUrl: '', linkUrl: '' }),
+                                  autoChangeInterval: parseInt(e.target.value) || 5000
+                                }
+                              }
+                            })}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Banners</label>
+                          <div className="space-y-4">
+                            {/* Migration logic: if old imageUrl is present and banners is empty, show it as first banner in UI */}
+                            {(settings.ui.topBanner?.banners?.length 
+                              ? settings.ui.topBanner.banners 
+                              : (settings.ui.topBanner?.imageUrl ? [{
+                                  imageUrl: settings.ui.topBanner.imageUrl,
+                                  linkUrl: settings.ui.topBanner.linkUrl || ''
+                                }] : [])
+                            ).map((banner, index, currentBanners) => (
+                              <div key={index} className="flex gap-2 items-start bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <div className="flex-1 space-y-2">
+                                  <input 
+                                    type="text"
+                                    value={banner.imageUrl}
+                                    onChange={(e) => {
+                                      const newBanners = [...currentBanners];
+                                      newBanners[index] = { ...newBanners[index], imageUrl: e.target.value };
+                                      setSettings({
+                                        ...settings,
+                                        ui: {
+                                          ...settings.ui,
+                                          topBanner: {
+                                            ...(settings.ui.topBanner || { enabled: true, banners: [] }),
+                                            banners: newBanners
+                                          }
+                                        }
+                                      });
+                                    }}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                                    placeholder="Image URL (https://...)"
+                                  />
+                                  <input 
+                                    type="text"
+                                    value={banner.linkUrl}
+                                    onChange={(e) => {
+                                      const newBanners = [...currentBanners];
+                                      newBanners[index] = { ...newBanners[index], linkUrl: e.target.value };
+                                      setSettings({
+                                        ...settings,
+                                        ui: {
+                                          ...settings.ui,
+                                          topBanner: {
+                                            ...(settings.ui.topBanner || { enabled: true, banners: [] }),
+                                            banners: newBanners
+                                          }
+                                        }
+                                      });
+                                    }}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                                    placeholder="Link URL (Optional)"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const newBanners = [...currentBanners];
+                                    newBanners.splice(index, 1);
+                                    setSettings({
+                                      ...settings,
+                                      ui: {
+                                        ...settings.ui,
+                                        topBanner: {
+                                          ...(settings.ui.topBanner || { enabled: true, banners: [] }),
+                                          banners: newBanners
+                                        }
+                                      }
+                                    });
+                                  }}
+                                  className="p-2 bg-red-50 text-red-600 rounded-lg shrink-0 hover:bg-red-100 mt-1"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => {
+                                const currentBanners = settings.ui.topBanner?.banners?.length 
+                                  ? settings.ui.topBanner.banners 
+                                  : (settings.ui.topBanner?.imageUrl ? [{
+                                      imageUrl: settings.ui.topBanner.imageUrl,
+                                      linkUrl: settings.ui.topBanner.linkUrl || ''
+                                    }] : []);
+                                
+                                setSettings({
+                                  ...settings,
+                                  ui: {
+                                    ...settings.ui,
+                                    topBanner: {
+                                      ...(settings.ui.topBanner || { enabled: true, banners: [] }),
+                                      banners: [...currentBanners, { imageUrl: '', linkUrl: '' }]
+                                    }
+                                  }
+                                });
+                              }}
+                              className="w-full py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2 mt-2"
+                            >
+                              <Plus className="w-4 h-4" /> Add Banner
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 

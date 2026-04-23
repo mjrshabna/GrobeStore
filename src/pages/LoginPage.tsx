@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, ArrowRight, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import LoadingScreen from '../components/LoadingScreen';
+
 export default function LoginPage() {
   const { user, login, loginWithEmail, signupWithEmail, resetPassword, loading } = useAuth();
   const navigate = useNavigate();
@@ -70,7 +72,7 @@ export default function LoginPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-slate-500 font-bold">Loading...</div>;
+    return <LoadingScreen message="Authenticating User..." />;
   }
 
   return (

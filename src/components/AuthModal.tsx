@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, LogIn, ShieldCheck } from 'lucide-react';
+import { X, LogIn, ShieldCheck, User, Package, Heart, MapPin, Ticket } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -10,6 +11,17 @@ interface AuthModalProps {
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { login, user, logout, isAdmin } = useAuth();
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
@@ -47,6 +59,52 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       <p className="text-sm text-slate-500">{user.email}</p>
                     </div>
                   </div>
+                  
+                  <Link 
+                    to="/account" 
+                    onClick={onClose}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <User className="w-5 h-5" />
+                    My Account Overview
+                  </Link>
+
+                  <Link 
+                    to="/account?tab=orders" 
+                    onClick={onClose}
+                    className="w-full py-4 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Package className="w-5 h-5" />
+                    View My Orders
+                  </Link>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Link 
+                      to="/account?tab=wishlist" 
+                      onClick={onClose}
+                      className="py-4 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-slate-200 transition-colors flex flex-col items-center justify-center gap-1"
+                    >
+                      <Heart className="w-5 h-5 text-red-500" />
+                      <span className="text-[10px] uppercase">Wishlist</span>
+                    </Link>
+                    <Link 
+                      to="/account?tab=addresses" 
+                      onClick={onClose}
+                      className="py-4 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-slate-200 transition-colors flex flex-col items-center justify-center gap-1"
+                    >
+                      <MapPin className="w-5 h-5 text-blue-500" />
+                      <span className="text-[10px] uppercase">Addresses</span>
+                    </Link>
+                  </div>
+
+                  <Link 
+                    to="/account?tab=coupons" 
+                    onClick={onClose}
+                    className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Ticket className="w-5 h-5" />
+                    My Coupons & Offers
+                  </Link>
                   
                   {isAdmin && (
                     <Link 

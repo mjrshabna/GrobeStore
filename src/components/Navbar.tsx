@@ -1,18 +1,55 @@
-import React, { useState } from 'react';
-import { ShoppingCart, User, Search, AlignLeft, X, LayoutGrid, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShoppingCart, User, Search, AlignLeft, X, LayoutGrid, ChevronRight, Package, Settings, LogOut, ShieldCheck, Heart, MapPin, Ticket } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthModal from './AuthModal';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
+import { productService } from '../services/db';
 
 export default function Navbar() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [navLinks, setNavLinks] = useState([
+    { name: 'Components', path: '/catalog?category=Components' },
+    { name: 'Robotics', path: '/catalog?category=Robotics' },
+    { name: 'Sensors', path: '/catalog?category=Sensors' },
+    { name: 'Power', path: '/catalog?category=Power' },
+    { name: 'Tools', path: '/catalog?category=Tools' },
+    { name: 'Blog', path: '/blog' },
+  ]);
+
   const { cartItems } = useCart();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    productService.getAllProducts().then(products => {
+      const categoriesSet = new Set(products.map(p => p.category).filter(Boolean));
+      if (categoriesSet.size > 0) {
+        const dynamicLinks = Array.from(categoriesSet)
+          .slice(0, 5) // ensure it doesn't get too long
+          .map(cat => ({
+            name: cat,
+            path: `/catalog?category=${cat}`
+          }));
+        setNavLinks([...dynamicLinks, { name: 'Blog', path: '/blog' }]);
+      }
+    }).catch(e => console.error(e));
+  }, []);
+
+  useEffect(() => {
+    if (isMobileMenuOpen || isAuthModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMobileMenuOpen, isAuthModalOpen]);
   
   const cartItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -23,15 +60,6 @@ export default function Navbar() {
       setIsMobileMenuOpen(false);
     }
   };
-
-  const navLinks = [
-    { name: 'Components', path: '/catalog?category=Components' },
-    { name: 'Robotics', path: '/catalog?category=Robotics' },
-    { name: 'Sensors', path: '/catalog?category=Sensors' },
-    { name: 'Power', path: '/catalog?category=Power' },
-    { name: 'Tools', path: '/catalog?category=Tools' },
-    { name: 'Blog', path: '/blog', bold: true },
-  ];
 
   return (
     <>
@@ -112,22 +140,115 @@ export default function Navbar() {
                 </span>
               )}
             </Link>
-            <button 
-              onClick={() => {
-                if (user) {
-                  setIsAuthModalOpen(true);
-                } else {
-                  navigate('/login');
-                }
-              }}
-              className="p-2 text-slate-600 hover:text-blue-600 transition-colors"
+            <div 
+              className="relative"
+              onMouseLeave={() => setIsAccountDropdownOpen(false)}
             >
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="User" className="w-6 h-6 rounded-full" />
-              ) : (
-                <User className="w-5 h-5" />
-              )}
-            </button>
+              <button 
+                onClick={() => {
+                  if (user) {
+                    setIsAccountDropdownOpen(!isAccountDropdownOpen);
+                  } else {
+                    navigate('/login');
+                  }
+                }}
+                className="p-2 text-slate-600 hover:text-blue-600 transition-colors"
+                onMouseEnter={() => user && setIsAccountDropdownOpen(true)}
+              >
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="User" className="w-6 h-6 rounded-full border border-slate-200" />
+                ) : (
+                  <User className="w-5 h-5" />
+                )}
+              </button>
+
+              {/* PC Account Dropdown */}
+              <AnimatePresence>
+                {isAccountDropdownOpen && user && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsAccountDropdownOpen(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-100 py-4 z-50 overflow-hidden before:content-[''] before:absolute before:-top-4 before:left-0 before:right-0 before:h-4"
+                    >
+                      <div className="px-6 py-4 border-b border-slate-50 mb-2">
+                        <p className="font-bold text-slate-900 truncate">{user.displayName || 'Grobe User'}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">{user.email}</p>
+                      </div>
+                      
+                      <div className="px-2 space-y-1">
+                        <Link 
+                          to="/account?tab=overview" 
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-blue-600 transition-all font-bold text-xs"
+                        >
+                          <User className="w-4 h-4" />
+                          My Profile
+                        </Link>
+                        <Link 
+                          to="/account?tab=orders" 
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-blue-600 transition-all font-bold text-xs"
+                        >
+                          <Package className="w-4 h-4" />
+                          My Orders
+                        </Link>
+                        <Link 
+                          to="/account?tab=wishlist" 
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-blue-600 transition-all font-bold text-xs"
+                        >
+                          <Heart className="w-4 h-4" />
+                          My Wishlist
+                        </Link>
+                        <Link 
+                          to="/account?tab=addresses" 
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-blue-600 transition-all font-bold text-xs"
+                        >
+                          <MapPin className="w-4 h-4" />
+                          Addresses
+                        </Link>
+                        <Link 
+                          to="/account?tab=coupons" 
+                          onClick={() => setIsAccountDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-blue-600 transition-all font-bold text-xs"
+                        >
+                          <Ticket className="w-4 h-4" />
+                          My Coupons
+                        </Link>
+                        {user?.email === 'shabnavpm@gmail.com' && (
+                          <Link 
+                            to="/admin" 
+                            onClick={() => setIsAccountDropdownOpen(false)}
+                            className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-blue-50 text-blue-600 transition-all font-bold text-xs"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            Admin Panel
+                          </Link>
+                        )}
+                        <button 
+                          onClick={() => {
+                            logout();
+                            setIsAccountDropdownOpen(false);
+                            navigate('/');
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-red-50 text-red-600 transition-all font-bold text-xs"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Logout
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </nav>
@@ -141,14 +262,14 @@ export default function Navbar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] lg:hidden"
             />
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[80%] max-w-sm z-50 lg:hidden bg-white shadow-2xl flex flex-col"
+              className="fixed left-0 top-0 bottom-0 w-[80%] max-w-sm z-[60] lg:hidden bg-white shadow-2xl flex flex-col pt-safe pb-safe"
             >
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                 <span className="text-xl font-bold tracking-tighter text-blue-600">GROBE</span>
@@ -157,7 +278,7 @@ export default function Navbar() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
                 <form onSubmit={handleSearch} className="relative">
                   <input 
                     type="text" 
@@ -170,7 +291,7 @@ export default function Navbar() {
                 </form>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">Navigation</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">Laboratory Navigation</p>
                   <div className="grid grid-cols-1 gap-2">
                     {navLinks.map((item) => (
                       <Link
@@ -185,6 +306,82 @@ export default function Navbar() {
                     ))}
                   </div>
                 </div>
+
+                {user && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">My Account</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <Link
+                        to="/account?tab=overview"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <User className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                          <span className="font-bold text-slate-700">My Profile</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </Link>
+                      <Link
+                        to="/account?tab=orders"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Package className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                          <span className="font-bold text-slate-700">My Orders</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </Link>
+                      <Link
+                        to="/account?tab=wishlist"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Heart className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                          <span className="font-bold text-slate-700">My Wishlist</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </Link>
+                      <Link
+                        to="/account?tab=addresses"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <MapPin className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                          <span className="font-bold text-slate-700">Saved Addresses</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </Link>
+                      <Link
+                        to="/account?tab=coupons"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Ticket className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                          <span className="font-bold text-slate-700">My Coupons</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </Link>
+                      {user?.email === 'shabnavpm@gmail.com' && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/50 hover:bg-blue-50 transition-colors group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <ShieldCheck className="w-4 h-4 text-blue-600" />
+                            <span className="font-bold text-blue-700">Admin Dashboard</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-blue-400 transition-colors" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-3">
@@ -196,17 +393,30 @@ export default function Navbar() {
                   <ShoppingCart className="w-5 h-5" />
                   Cart ({cartItemCount})
                 </Link>
-                <button 
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    if (user) setIsAuthModalOpen(true);
-                    else navigate('/login');
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-white border border-slate-200 text-slate-700 font-bold shadow-sm"
-                >
-                  <User className="w-5 h-5" />
-                  {user ? 'My Account' : 'Sign In'}
-                </button>
+                  {user ? (
+                    <button 
+                      onClick={() => {
+                        logout();
+                        setIsMobileMenuOpen(false);
+                        navigate('/');
+                      }}
+                      className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-white border border-slate-200 text-red-600 font-bold shadow-sm"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      Logout
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        navigate('/login');
+                      }}
+                      className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-white border border-slate-200 text-slate-700 font-bold shadow-sm"
+                    >
+                      <User className="w-5 h-5" />
+                      Sign In
+                    </button>
+                  )}
               </div>
             </motion.div>
           </>

@@ -98,8 +98,8 @@ export const emailTemplates = {
         <tbody>
           ${cartItems.map(item => `
             <tr>
-              <td><strong>${item.name}</strong></td>
-              <td class="text-right">₹${Number(item.price).toFixed(2)}</td>
+              <td><strong>${item.name || 'Saved Product'}</strong> ${item.quantity > 1 ? `(x${item.quantity})` : ''}</td>
+              <td class="text-right">₹${(Number(item.price || 0) * Number(item.quantity || 1)).toFixed(2)}</td>
             </tr>
           `).join('')}
         </tbody>

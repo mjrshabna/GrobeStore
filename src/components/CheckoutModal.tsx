@@ -41,6 +41,17 @@ export default function CheckoutModal({ isOpen, onClose, total, totalMrp = total
   const [discount, setDiscount] = useState(0);
   const [findingAddress, setFindingAddress] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   const loadRazorpay = () => {
     return new Promise((resolve) => {
       if ((window as any).Razorpay) {

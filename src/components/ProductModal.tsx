@@ -31,6 +31,17 @@ export default function ProductModal({ isOpen, onClose, product, onSaved }: Prod
   });
 
   useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (product) {
       setFormData(product);
     } else {
@@ -363,8 +374,11 @@ export default function ProductModal({ isOpen, onClose, product, onSaved }: Prod
                     <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600/50">
                       <option value="Robotics">Robotics</option>
                       <option value="Sensors">Sensors</option>
+                      <option value="Motors">Motors</option>
                       <option value="Power">Power</option>
+                      <option value="Controllers">Controllers</option>
                       <option value="Tools">Tools</option>
+                      <option value="Connectors">Connectors</option>
                     </select>
                   </div>
                   <div className="space-y-2">

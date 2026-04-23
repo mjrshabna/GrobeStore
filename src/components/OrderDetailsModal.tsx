@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Package, MapPin, CreditCard, Clock, ChevronRight } from 'lucide-react';
 import { Order, Product } from '../services/db';
@@ -11,6 +11,17 @@ interface OrderDetailsModalProps {
 }
 
 export default function OrderDetailsModal({ isOpen, onClose, order, products }: OrderDetailsModalProps) {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!order) return null;
 
   const getProduct = (id: string) => products.find(p => p.id === id);
